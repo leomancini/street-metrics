@@ -1,11 +1,11 @@
 {
-  "name": "clairemont-camera-analzyer",
+  "name": "street-metrics",
   "version": "1.0.0",
   "description": "Nest camera snapshot capture service",
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node /home/leo/services/clairemont-camera-analzyer/server.js",
+    "start": "node /home/leo/services/street-metrics/server.js",
     "dev": "nodemon server.js"
   },
   "author": "",

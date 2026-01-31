@@ -19,7 +19,7 @@ app.get('/', (req, res) => {
     const deviceNames = SECRETS.DEVICES.map(d => d.NAME);
     res.json({
         status: 'ok',
-        service: 'clairemont-camera-analzyer',
+        service: 'street-metrics',
         devices: deviceNames,
         endpoints: {
             capture: '/capture/:deviceName',
