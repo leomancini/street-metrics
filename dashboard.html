@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Observed Street Metrics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+            background: #111;
+            color: #d0d0d0;
+            min-height: 100vh;
+            font-size: 15px;
+        }
+        header {
+            background: #111;
+            padding: 40px 24px 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        header h1 span { color: #999; }
+        .header-sub {
+            font-size: 13px;
+            color: #888;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-top: 16px;
+            text-align: center;
+            line-height: 1.6;
+        }
+        .device-label {
+            font-size: 14px;
+            background: #1a1a1a;
+            color: #777;
+            padding: 4px 12px;
+            border-radius: 0;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            padding: 20px 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #111;
+            border-radius: 0;
+            padding: 20px;
+        }
+        .card h2 {
+            font-size: 13px;
+            font-weight: 400;
+            color: #555;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .card-wide { grid-column: 1 / -1; }
+        .chart-container {
+            position: relative;
+            height: 260px;
+        }
+
+        /* Summary row */
+        .summary-row {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 16px;
+            padding: 0 24px 4px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .stat-card {
+            background: #111;
+            border-radius: 0;
+            padding: 14px 20px;
+        }
+        .stat-card .label {
+            font-size: 13px;
+            font-weight: 400;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #e0e0e0;
+            margin-top: 12px;
+        }
+
+        /* Timeline strip */
+        .timeline-strip {
+            padding: 0 24px 12px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .timeline-strip h2 {
+            font-size: 13px;
+            font-weight: 400;
+            color: #555;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .snapshots {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 8px;
+        }
+        .snapshots::-webkit-scrollbar { height: 6px; }
+        .snapshots::-webkit-scrollbar-track { background: #111; border-radius: 0; }
+        .snapshots::-webkit-scrollbar-thumb { background: #333; border-radius: 0; }
+        .snapshot {
+            flex: 0 0 auto;
+            cursor: pointer;
+            border-radius: 0;
+            overflow: hidden;
+            transition: opacity 0.2s;
+            position: relative;
+            opacity: 0.6;
+        }
+        .snapshot:hover, .snapshot.active { opacity: 1; }
+        .snapshot img {
+            display: block;
+            width: 120px;
+            height: 68px;
+            object-fit: cover;
+            background: #222;
+        }
+        .snapshot .ts {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.75);
+            font-size: 12px;
+            padding: 2px 6px;
+            color: #ccc;
+            text-align: center;
+        }
+
+        /* Detail panel */
+        .detail-panel {
+            padding: 0 24px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            display: none;
+        }
+        .detail-panel.visible { display: block; }
+        .detail-inner {
+            background: #111;
+            border-radius: 0;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 20px;
+        }
+        .detail-image img {
+            width: 320px;
+            border-radius: 0;
+            display: block;
+            background: #1a1a1a;
+        }
+        .detail-data { font-size: 15px; }
+        .detail-data h3 {
+            font-size: 18px;
+            color: #fff;
+            margin-bottom: 12px;
+        }
+        .detail-data .section {
+            margin-bottom: 12px;
+        }
+        .detail-data .section-title {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .detail-data .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+        }
+        .detail-data .row .k { color: #666; }
+        .detail-data .row .v { color: #ccc; font-weight: 500; }
+
+        /* Toggle */
+        .toggle-row {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            padding: 24px 24px 0;
+        }
+        .toggle-btn {
+            font-family: inherit;
+            font-size: 13px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            background: #111;
+            color: #555;
+            border: 1px solid #1a1a1a;
+            padding: 6px 20px;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .toggle-btn:first-child { border-radius: 0; }
+        .toggle-btn:not(:first-child) { margin-left: -1px; }
+        .toggle-btn:last-child { border-radius: 0; }
+        .toggle-btn.active {
+            color: #ccc;
+            border-color: #333;
+            position: relative;
+            z-index: 1;
+        }
+
+        @media (max-width: 800px) {
+            .grid { grid-template-columns: 1fr; }
+            .detail-inner { grid-template-columns: 1fr; }
+            .detail-image img { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Observed Street Metrics</h1>
+    <div class="header-sub">
+        Jackson Ave &amp; 44th Drive &nbsp;&middot;&nbsp; 40.747110, -73.942461 &nbsp;&middot;&nbsp; Long Island City, NY 11101
+    </div>
+</header>
+
+<div id="content" style="display:none;">
+    <div class="toggle-row">
+        <button class="toggle-btn active" id="btnAverages" onclick="switchMode('averages')">Averages</button>
+        <button class="toggle-btn" id="btn24h" onclick="switchMode('24h')">Last 24 Hours</button>
+        <button class="toggle-btn" id="btn7d" onclick="switchMode('7d')">Last 7 Days</button>
+    </div>
+
+    <!-- Summary stats -->
+    <div style="padding-top:32px;"></div>
+    <div class="summary-row" id="summaryRow"></div>
+    <div style="padding-top:8px;"></div>
+
+    <!-- Charts -->
+    <div class="grid">
+        <div class="card">
+            <h2>Vehicles</h2>
+            <div class="chart-container"><canvas id="vehiclesChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Pedestrians</h2>
+            <div class="chart-container"><canvas id="pedestriansChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Taxis</h2>
+            <div class="chart-container"><canvas id="taxisChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Delivery Vehicles</h2>
+            <div class="chart-container"><canvas id="deliveryChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Bikes / Scooters</h2>
+            <div class="chart-container"><canvas id="bikesChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Urban Vibe Scores</h2>
+            <div class="chart-container"><canvas id="vibeChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Building Occupancy %</h2>
+            <div class="chart-container"><canvas id="occupancyChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Visibility &amp; Weather</h2>
+            <div class="chart-container"><canvas id="weatherChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h2>Precipitation &amp; Road Conditions</h2>
+            <div class="chart-container"><canvas id="conditionsChart"></canvas></div>
+        </div>
+    </div>
+
+    <!-- Snapshot timeline -->
+    <div class="timeline-strip">
+        <h2>Snapshot Timeline</h2>
+        <div class="snapshots" id="snapshots"></div>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="detail-panel" id="detailPanel">
+        <div class="detail-inner">
+            <div class="detail-image"><img id="detailImg" src="" alt="Snapshot"></div>
+            <div class="detail-data" id="detailData"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const DEVICE = 'TATAMI';
+const CHART_COLORS = {
+    blue: '#ffffff',
+    purple: '#999999',
+    pink: '#cccccc',
+    orange: '#777777',
+    green: '#bbbbbb',
+    red: '#aaaaaa',
+    cyan: '#dddddd',
+    gray: '#555555',
+};
+
+const MONO_FONT = "'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace";
+
+const chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: {
+        mode: 'index',
+        intersect: false,
+    },
+    plugins: {
+        legend: {
+            labels: { color: '#666', font: { size: 12, family: MONO_FONT }, boxWidth: 10 }
+        },
+        tooltip: {
+            backgroundColor: '#1a1a1a',
+            titleColor: '#ccc',
+            bodyColor: '#999',
+            borderWidth: 0,
+            titleFont: { size: 13, family: MONO_FONT },
+            bodyFont: { size: 13, family: MONO_FONT },
+            callbacks: {
+                label: function(ctx) {
+                    let label = ctx.dataset.label || '';
+                    if (label) label += ': ';
+                    if (ctx.parsed.y != null) label += Math.round(ctx.parsed.y);
+                    return label;
+                }
+            }
+        }
+    },
+    scales: {
+        x: {
+            type: 'category',
+            ticks: {
+                color: '#444', font: { size: 12, family: MONO_FONT }, maxRotation: 0, autoSkip: false, padding: 0,
+                callback: function(val, index) {
+                    const label = this.getLabelForValue(val);
+                    const allowed = ['12AM', '3AM', '6AM', '9AM', '12PM', '3PM', '6PM', '9PM'];
+                    return allowed.includes(label) ? label : null;
+                }
+            },
+            grid: { color: '#1a1a1a', tickLength: 16, tickColor: 'transparent', lineWidth: ctx => ctx.index === 0 ? 0 : 1 },
+            border: { color: '#1a1a1a' },
+            offset: true,
+        },
+        y: {
+            ticks: { color: '#444', font: { size: 12, family: MONO_FONT }, padding: 0, precision: 0 },
+            grid: { color: '#1a1a1a', tickLength: 16, tickColor: 'transparent', drawOnChartArea: true, lineWidth: ctx => ctx.index === 0 ? 0 : 1 },
+            border: { color: '#1a1a1a' },
+        },
+        yRight: {
+            position: 'right',
+            ticks: { display: false },
+            grid: { drawOnChartArea: false, drawTicks: false },
+            border: { color: '#1a1a1a' },
+        }
+    }
+};
+
+let analyses = [];
+let timeLabels = [];
+let avgByTime = {};
+let recentAnalyses = [];
+let recentLabels = [];
+let viewMode = 'averages';
+let charts = [];
+
+// Generate all hourly time slots for a full 24-hour day
+function generateAllSlots() {
+    const slots = [];
+    for (let h = 0; h < 24; h++) {
+        slots.push(String(h).padStart(2, '0') + ':00');
+    }
+    return slots;
+}
+
+// Group analyses by hour and compute averages
+function buildAverages() {
+    const buckets = {};
+    analyses.forEach(a => {
+        const t = new Date(a.timestamp);
+        const key = String(t.getHours()).padStart(2, '0') + ':00';
+        if (!buckets[key]) buckets[key] = [];
+        buckets[key].push(a);
+    });
+
+    timeLabels = generateAllSlots();
+    avgByTime = {};
+
+    timeLabels.forEach(key => {
+        const group = buckets[key];
+        if (!group) { avgByTime[key] = null; return; }
+        const n = group.length;
+        const avg = (field) => group.reduce((s, a) => s + field(a), 0) / n;
+        avgByTime[key] = {
+            vehicles: avg(a => a.activity.vehicles),
+            pedestrians: avg(a => a.activity.pedestrians),
+            taxis: avg(a => a.activity.taxis),
+            delivery_vehicles: avg(a => a.activity.delivery_vehicles),
+            bikes_scooters: avg(a => a.activity.bikes_scooters),
+            hustle_score: avg(a => a.urban_vibe.hustle_score),
+            cozy_factor: avg(a => a.urban_vibe.cozy_factor),
+            residential_lit: avg(a => a.building_occupancy.residential_windows_lit_pct),
+            office_lit: avg(a => a.building_occupancy.office_windows_lit_pct),
+            visibility: avg(a => a.atmosphere.visibility_miles),
+            precipitation: group.map(a => a.atmosphere.precipitation),
+            road_condition: group.map(a => a.atmosphere.road_condition),
+            count: n,
+        };
+    });
+}
+
+function buildRecent(hours) {
+    const cutoff = Date.now() - hours * 60 * 60 * 1000;
+    recentAnalyses = analyses.filter(a => new Date(a.timestamp).getTime() >= cutoff);
+    recentLabels = recentAnalyses.map(a => {
+        const d = new Date(a.timestamp);
+        if (hours <= 24) {
+            const h = d.getHours();
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            return `${h12}${ampm}`;
+        }
+        const mon = d.toLocaleString('en-US', { month: 'short' });
+        const day = d.getDate();
+        return `${mon} ${day}`;
+    });
+}
+
+function destroyCharts() {
+    charts.forEach(c => c.destroy());
+    charts = [];
+}
+
+function switchMode(mode) {
+    viewMode = mode;
+    document.getElementById('btnAverages').classList.toggle('active', mode === 'averages');
+    document.getElementById('btn24h').classList.toggle('active', mode === '24h');
+    document.getElementById('btn7d').classList.toggle('active', mode === '7d');
+    if (mode === '24h') buildRecent(24);
+    if (mode === '7d') buildRecent(7 * 24);
+    renderAll();
+}
+
+function renderAll() {
+    destroyCharts();
+    renderSummary();
+    renderActivityCharts();
+    renderVibeChart();
+    renderOccupancyChart();
+    renderWeatherChart();
+    renderConditionsChart();
+}
+
+function getLabels() {
+    return viewMode === 'averages' ? displayLabels() : recentLabels;
+}
+
+function getData(avgField, rawField) {
+    if (viewMode === 'averages') {
+        return interpolate(timeLabels.map(k => val(k, avgField)));
+    }
+    const rf = rawField || avgField;
+    return recentAnalyses.map(a => {
+        const v = rf(a);
+        return v == null ? null : Number(Number(v).toFixed(1));
+    });
+}
+
+function getXScaleOptions() {
+    if (viewMode === 'averages') return chartDefaults.scales.x;
+    let lastLabel = '';
+    return {
+        ...chartDefaults.scales.x,
+        ticks: {
+            ...chartDefaults.scales.x.ticks,
+            autoSkip: false,
+            maxRotation: 0,
+            callback: function(val, index) {
+                const label = this.getLabelForValue(val);
+                if (label === lastLabel) return '';
+                lastLabel = label;
+                return label;
+            }
+        },
+    };
+}
+
+function formatTimeLabel(hhmm) {
+    const [h, m] = hhmm.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
+}
+
+async function init() {
+    const res = await fetch(`/api/analysis/${DEVICE}`);
+    const data = await res.json();
+    analyses = data.analyses;
+    buildAverages();
+    buildRecent(7 * 24);
+
+    document.getElementById('content').style.display = 'block';
+
+    renderAll();
+    renderTimeline();
+}
+
+function renderSummary() {
+    const subset = viewMode === 'averages' ? analyses : recentAnalyses;
+    if (subset.length === 0) {
+        document.getElementById('summaryRow').innerHTML = '<div class="stat-card"><div class="label">No data</div><div class="value">—</div></div>';
+        return;
+    }
+    const n = subset.length;
+    const avgVehicles = (subset.reduce((s, a) => s + a.activity.vehicles, 0) / n).toFixed(1);
+    const avgPeds = (subset.reduce((s, a) => s + a.activity.pedestrians, 0) / n).toFixed(1);
+    const avgHustle = (subset.reduce((s, a) => s + a.urban_vibe.hustle_score, 0) / n).toFixed(1);
+    const avgVis = (subset.reduce((s, a) => s + a.atmosphere.visibility_miles, 0) / n).toFixed(1);
+    const days = [...new Set(subset.map(a => a.timestamp.split('T')[0]))].length;
+
+    const stats = [
+        { label: 'Samples', value: n },
+        { label: 'Days', value: days },
+        { label: 'Avg Vehicles', value: avgVehicles },
+        { label: 'Avg Pedestrians', value: avgPeds },
+        { label: 'Avg Hustle', value: avgHustle },
+        { label: 'Avg Visibility', value: avgVis + ' mi' },
+    ];
+
+    document.getElementById('summaryRow').innerHTML = stats.map(s =>
+        `<div class="stat-card">
+            <div class="label">${s.label}</div>
+            <div class="value">${s.value}</div>
+        </div>`
+    ).join('');
+}
+
+function formatTs(t) {
+    const d = new Date(t);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function hexFull(color) {
+    if (/^#[0-9a-fA-F]{3}$/.test(color)) return '#' + color[1]+color[1] + color[2]+color[2] + color[3]+color[3];
+    return color;
+}
+
+function makeGradient(ctx, color) {
+    const g = ctx.createLinearGradient(0, 0, 0, ctx.canvas.clientHeight || 260);
+    const c = hexFull(color);
+    g.addColorStop(0, c + '30');
+    g.addColorStop(1, c + '00');
+    return g;
+}
+
+function makeDataset(label, color, data) {
+    return {
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: color,
+        cubicInterpolationMode: 'monotone',
+        tension: 0.5,
+        fill: false,
+        spanGaps: true,
+    };
+}
+
+function val(k, field) {
+    const d = avgByTime[k];
+    return d ? Number(field(d).toFixed(1)) : null;
+}
+
+// Catmull-Rom spline interpolation to fill null gaps smoothly
+function interpolate(arr) {
+    // Collect known points
+    const known = [];
+    for (let i = 0; i < arr.length; i++) {
+        if (arr[i] != null) known.push({ i, v: arr[i] });
+    }
+    if (known.length < 2) return [...arr];
+
+    const out = [...arr];
+    // For each gap, use Catmull-Rom with surrounding known points
+    for (let ki = 0; ki < known.length - 1; ki++) {
+        const p1 = known[ki], p2 = known[ki + 1];
+        if (p2.i - p1.i <= 1) continue; // no gap
+        const p0 = ki > 0 ? known[ki - 1] : { i: p1.i - (p2.i - p1.i), v: p1.v };
+        const p3 = ki < known.length - 2 ? known[ki + 2] : { i: p2.i + (p2.i - p1.i), v: p2.v };
+        for (let i = p1.i + 1; i < p2.i; i++) {
+            const t = (i - p1.i) / (p2.i - p1.i);
+            const t2 = t * t, t3 = t2 * t;
+            const v = 0.5 * (
+                (2 * p1.v) +
+                (-p0.v + p2.v) * t +
+                (2 * p0.v - 5 * p1.v + 4 * p2.v - p3.v) * t2 +
+                (-p0.v + 3 * p1.v - 3 * p2.v + p3.v) * t3
+            );
+            out[i] = Number(v.toFixed(1));
+        }
+    }
+    return out;
+}
+
+const displayLabels = () => timeLabels.map(formatTimeLabel);
+
+function singleLineChart(canvasId, avgField, rawField) {
+    const noLegend = { ...chartDefaults, plugins: { ...chartDefaults.plugins, legend: { display: false } } };
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    const ds = makeDataset('', '#ccc', getData(avgField, rawField));
+    charts.push(new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: getLabels(),
+            datasets: [ds]
+        },
+        options: {
+            ...noLegend,
+            scales: {
+                ...chartDefaults.scales,
+                x: getXScaleOptions(),
+                y: { ...chartDefaults.scales.y, beginAtZero: true }
+            }
+        }
+    }));
+}
+
+function renderActivityCharts() {
+    singleLineChart('vehiclesChart', a => a.vehicles, a => a.activity.vehicles);
+    singleLineChart('pedestriansChart', a => a.pedestrians, a => a.activity.pedestrians);
+    singleLineChart('taxisChart', a => a.taxis, a => a.activity.taxis);
+    singleLineChart('deliveryChart', a => a.delivery_vehicles, a => a.activity.delivery_vehicles);
+    singleLineChart('bikesChart', a => a.bikes_scooters, a => a.activity.bikes_scooters);
+}
+
+function renderVibeChart() {
+    const ctx = document.getElementById('vibeChart').getContext('2d');
+    charts.push(new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: getLabels(),
+            datasets: [
+                makeDataset('Hustle Score', CHART_COLORS.pink, getData(a => a.hustle_score, a => a.urban_vibe.hustle_score)),
+                makeDataset('Cozy Factor', CHART_COLORS.orange, getData(a => a.cozy_factor, a => a.urban_vibe.cozy_factor)),
+            ]
+        },
+        options: {
+            ...chartDefaults,
+            scales: {
+                ...chartDefaults.scales,
+                x: getXScaleOptions(),
+                y: { ...chartDefaults.scales.y, min: 0, max: 10, title: { display: true, text: 'Score (1-10)', color: '#555' } }
+            }
+        }
+    }));
+}
+
+function renderOccupancyChart() {
+    const ctx = document.getElementById('occupancyChart').getContext('2d');
+    charts.push(new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: getLabels(),
+            datasets: [
+                makeDataset('Residential Lit %', CHART_COLORS.orange, getData(a => a.residential_lit, a => a.building_occupancy.residential_windows_lit_pct)),
+                makeDataset('Office Lit %', CHART_COLORS.blue, getData(a => a.office_lit, a => a.building_occupancy.office_windows_lit_pct)),
+            ]
+        },
+        options: {
+            ...chartDefaults,
+            scales: {
+                ...chartDefaults.scales,
+                x: getXScaleOptions(),
+                y: { ...chartDefaults.scales.y, min: 0, max: 100, title: { display: true, text: '%', color: '#555' } }
+            }
+        }
+    }));
+}
+
+function renderWeatherChart() {
+    const ctx = document.getElementById('weatherChart').getContext('2d');
+    charts.push(new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: getLabels(),
+            datasets: [
+                makeDataset('Visibility (mi)', CHART_COLORS.cyan, getData(a => a.visibility, a => a.atmosphere.visibility_miles)),
+            ]
+        },
+        options: {
+            ...chartDefaults,
+            scales: {
+                ...chartDefaults.scales,
+                x: getXScaleOptions(),
+                y: { ...chartDefaults.scales.y, beginAtZero: true, title: { display: true, text: 'Miles', color: '#555' } }
+            }
+        }
+    }));
+}
+
+function renderConditionsChart() {
+    const precipMap = { none: 0, fog: 1, light_rain: 2, light_snow: 3, sleet: 4, heavy_rain: 5, heavy_snow: 6 };
+    const roadMap = { dry: 0, wet: 1, slushy: 2, snow_covered: 3, icy: 4, flooded: 5 };
+    const precipLabels = ['None', 'Fog', 'Light Rain', 'Light Snow', 'Sleet', 'Heavy Rain', 'Heavy Snow'];
+    const roadLabels = ['Dry', 'Wet', 'Slushy', 'Snow Covered', 'Icy', 'Flooded'];
+
+    // For categorical data, use the mode (most common value) per time slot
+    function mode(arr, map) {
+        const scores = arr.map(v => map[v] ?? 0);
+        const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+        return Number(avg.toFixed(1));
+    }
+
+    let precipData, roadData;
+    if (viewMode === 'averages') {
+        precipData = interpolate(timeLabels.map(k => avgByTime[k] ? mode(avgByTime[k].precipitation, precipMap) : null));
+        roadData = interpolate(timeLabels.map(k => avgByTime[k] ? mode(avgByTime[k].road_condition, roadMap) : null));
+    } else {
+        precipData = recentAnalyses.map(a => precipMap[a.atmosphere.precipitation] ?? 0);
+        roadData = recentAnalyses.map(a => roadMap[a.atmosphere.road_condition] ?? 0);
+    }
+
+    const ctx = document.getElementById('conditionsChart').getContext('2d');
+    charts.push(new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: getLabels(),
+            datasets: [
+                {
+                    ...makeDataset('Precipitation', CHART_COLORS.blue, precipData),
+                    stepped: 'middle',
+                    yAxisID: 'y',
+                },
+                {
+                    ...makeDataset('Road Condition', CHART_COLORS.red, roadData),
+                    stepped: 'middle',
+                    yAxisID: 'y2',
+                },
+            ]
+        },
+        options: {
+            ...chartDefaults,
+            scales: {
+                x: getXScaleOptions(),
+                y: {
+                    position: 'left',
+                    ticks: {
+                        color: '#444', font: { size: 12, family: MONO_FONT },
+                        callback: v => precipLabels[v] || '',
+                        stepSize: 1,
+                        padding: 0,
+                    },
+                    grid: { color: '#1a1a1a', tickLength: 16, tickColor: 'transparent', lineWidth: ctx => ctx.index === 0 ? 0 : 1 },
+                    border: { color: '#1a1a1a' },
+                    min: 0, max: precipLabels.length - 1,
+                    title: { display: true, text: 'Precip', color: '#555', font: { size: 12, family: MONO_FONT } },
+                },
+                y2: {
+                    position: 'right',
+                    ticks: {
+                        color: '#444', font: { size: 12, family: MONO_FONT },
+                        callback: v => roadLabels[v] || '',
+                        stepSize: 1,
+                        padding: 0,
+                    },
+                    grid: { drawOnChartArea: false, tickLength: 16, tickColor: 'transparent', lineWidth: ctx => ctx.index === 0 ? 0 : 1 },
+                    border: { color: '#1a1a1a' },
+                    min: 0, max: roadLabels.length - 1,
+                    title: { display: true, text: 'Road', color: '#555', font: { size: 12, family: MONO_FONT } },
+                },
+            }
+        }
+    }));
+}
+
+function renderTimeline() {
+    const container = document.getElementById('snapshots');
+    container.innerHTML = analyses.map((a, i) =>
+        `<div class="snapshot" data-index="${i}" onclick="showDetail(${i})">
+            <img src="/images/${DEVICE}/${a._image}" alt="${a.timestamp}" loading="lazy"
+                 onerror="this.style.background='#333';this.alt='No image'">
+            <div class="ts">${formatTs(a.timestamp)}</div>
+        </div>`
+    ).join('');
+}
+
+function showDetail(index) {
+    const a = analyses[index];
+    const panel = document.getElementById('detailPanel');
+    panel.classList.add('visible');
+
+    document.querySelectorAll('.snapshot').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.snapshot[data-index="${index}"]`)?.classList.add('active');
+
+    document.getElementById('detailImg').src = `/images/${DEVICE}/${a._image}`;
+
+    const sections = [
+        { title: 'Activity', rows: Object.entries(a.activity).map(([k, v]) => [k.replace(/_/g, ' '), v]) },
+        { title: 'Atmosphere', rows: Object.entries(a.atmosphere).map(([k, v]) => [k.replace(/_/g, ' '), v]) },
+        { title: 'Building Occupancy', rows: Object.entries(a.building_occupancy).map(([k, v]) => [k.replace(/_/g, ' '), v + '%']) },
+        { title: 'Street Features', rows: Object.entries(a.street_features).map(([k, v]) => [k.replace(/_/g, ' '), v]) },
+        { title: 'Urban Vibe', rows: Object.entries(a.urban_vibe).map(([k, v]) => [k.replace(/_/g, ' '), v]) },
+        { title: 'Seasonal', rows: Object.entries(a.seasonal).map(([k, v]) => [k.replace(/_/g, ' '), v]) },
+    ];
+
+    document.getElementById('detailData').innerHTML =
+        `<h3>${a.day_of_week}, ${formatTs(a.timestamp)} &mdash; ${a.daylight}</h3>` +
+        sections.map(s =>
+            `<div class="section">
+                <div class="section-title">${s.title}</div>
+                ${s.rows.map(([k, v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('')}
+            </div>`
+        ).join('');
+
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+init();
+</script>
+</body>
+</html>
