@@ -1,7 +1,7 @@
 {
-  "service_id": "street-metrics",
-  "service_name": "street-metrics",
-  "domain": "https://street-metrics.noshado.ws",
+  "service_id": "clairemont-camera-analzyer",
+  "service_name": "clairemont-camera-analzyer",
+  "domain": "https://clairemont-camera-analzyer.noshado.ws",
   "host": "localhost",
   "port": "3121",
   "author": "leo",
