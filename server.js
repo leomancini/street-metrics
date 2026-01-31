@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = 3121;
+const port = 3120;
 
 // Serve static images
 app.use('/images', express.static(path.join(__dirname, 'images')));
@@ -19,7 +19,7 @@ app.get('/', (req, res) => {
     const deviceNames = SECRETS.DEVICES.map(d => d.NAME);
     res.json({
         status: 'ok',
-        service: 'clairemont-camera-analzyer',
+        service: 'street-metrics',
         devices: deviceNames,
         endpoints: {
             capture: '/capture/:deviceName',

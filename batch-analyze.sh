@@ -1,8 +1,8 @@
 #!/bin/bash
 # Batch analyze all TATAMI images
-ANALYSIS_DIR="/Users/leo/Developer/clairemont-camera-analzyer/analysis/TATAMI"
-IMAGE_DIR="/Users/leo/Developer/clairemont-camera-analzyer/images/TATAMI"
-SERVER="http://localhost:3121"
+ANALYSIS_DIR="/Users/leo/Developer/street-metrics/analysis/TATAMI"
+IMAGE_DIR="/Users/leo/Developer/street-metrics/images/TATAMI"
+SERVER="http://localhost:3120"
 
 total=$(ls "$IMAGE_DIR"/*.jpg | wc -l | tr -d ' ')
 done=0
