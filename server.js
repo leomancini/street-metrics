@@ -16,6 +16,10 @@ const port = 3120;
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
 app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dashboard.html'));
+});
+
+app.get('/status', (req, res) => {
     const deviceNames = SECRETS.DEVICES.map(d => d.NAME);
     res.json({
         status: 'ok',
@@ -133,11 +137,6 @@ app.post('/analyze/:deviceName', express.json(), async (req, res) => {
             error: error.message
         });
     }
-});
-
-// Serve analysis dashboard
-app.get('/dashboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
 
 // API: Get all analysis data for a device

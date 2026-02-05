@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
         body {
             font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
             background: #111;
@@ -63,7 +63,7 @@
             font-size: 13px;
             font-weight: 400;
             color: #555;
-            margin-bottom: 12px;
+            margin-bottom: 20px;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
@@ -103,7 +103,7 @@
 
         /* Timeline strip */
         .timeline-strip {
-            padding: 0 24px 12px;
+            padding: 0 60px 12px 44px;
             max-width: 1400px;
             margin: 0 auto;
         }
@@ -153,7 +153,7 @@
 
         /* Detail panel */
         .detail-panel {
-            padding: 0 24px 20px;
+            padding: 0 60px 20px 44px;
             max-width: 1400px;
             margin: 0 auto;
             display: none;
@@ -245,8 +245,8 @@
 <div id="content" style="display:none;">
     <div class="toggle-row">
         <button class="toggle-btn active" id="btnAverages" onclick="switchMode('averages')">Averages</button>
-        <button class="toggle-btn" id="btn24h" onclick="switchMode('24h')">Last 24 Hours</button>
-        <button class="toggle-btn" id="btn7d" onclick="switchMode('7d')">Last 7 Days</button>
+        <button class="toggle-btn" id="btn24h" onclick="switchMode('24h')">Sample 24 Hours</button>
+        <button class="toggle-btn" id="btn7d" onclick="switchMode('7d')">Sample 3 Days</button>
     </div>
 
     <!-- Summary stats -->
@@ -274,11 +274,6 @@
         <div class="card">
             <h2>Delivery Vehicles</h2>
             <div class="chart-container"><canvas id="deliveryChart"></canvas></div>
-        </div>
-
-        <div class="card">
-            <h2>Bikes / Scooters</h2>
-            <div class="chart-container"><canvas id="bikesChart"></canvas></div>
         </div>
 
         <div class="card">
@@ -336,6 +331,7 @@ const chartDefaults = {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    clip: false,
     interaction: {
         mode: 'index',
         intersect: false,
@@ -352,6 +348,13 @@ const chartDefaults = {
             titleFont: { size: 13, family: MONO_FONT },
             bodyFont: { size: 13, family: MONO_FONT },
             callbacks: {
+                title: function(items) {
+                    if (viewMode === '7d' && items.length > 0) {
+                        const idx = items[0].dataIndex;
+                        if (recentAnalyses[idx]) return formatTs(recentAnalyses[idx].timestamp);
+                    }
+                    return items[0]?.label || '';
+                },
                 label: function(ctx) {
                     let label = ctx.dataset.label || '';
                     if (label) label += ': ';
@@ -365,7 +368,7 @@ const chartDefaults = {
         x: {
             type: 'category',
             ticks: {
-                color: '#444', font: { size: 12, family: MONO_FONT }, maxRotation: 0, autoSkip: false, padding: 0,
+                color: '#444', font: { size: 12, family: MONO_FONT }, maxRotation: 0, autoSkip: false, padding: 0, align: 'inner',
                 callback: function(val, index) {
                     const label = this.getLabelForValue(val);
                     const allowed = ['12AM', '3AM', '6AM', '9AM', '12PM', '3PM', '6PM', '9PM'];
@@ -374,18 +377,20 @@ const chartDefaults = {
             },
             grid: { color: '#1a1a1a', tickLength: 16, tickColor: 'transparent', lineWidth: ctx => ctx.index === 0 ? 0 : 1 },
             border: { color: '#1a1a1a' },
-            offset: true,
+            offset: false,
         },
         y: {
             ticks: { color: '#444', font: { size: 12, family: MONO_FONT }, padding: 0, precision: 0 },
             grid: { color: '#1a1a1a', tickLength: 16, tickColor: 'transparent', drawOnChartArea: true, lineWidth: ctx => ctx.index === 0 ? 0 : 1 },
             border: { color: '#1a1a1a' },
+            afterFit(axis) { axis.width = 50; },
         },
         yRight: {
             position: 'right',
             ticks: { display: false },
             grid: { drawOnChartArea: false, drawTicks: false },
             border: { color: '#1a1a1a' },
+            afterFit(axis) { axis.width = 16; },
         }
     }
 };
@@ -404,6 +409,7 @@ function generateAllSlots() {
     for (let h = 0; h < 24; h++) {
         slots.push(String(h).padStart(2, '0') + ':00');
     }
+    slots.push('24:00'); // trailing midnight label
     return slots;
 }
 
@@ -421,7 +427,7 @@ function buildAverages() {
     avgByTime = {};
 
     timeLabels.forEach(key => {
-        const group = buckets[key];
+        const group = key === '24:00' ? buckets['00:00'] : buckets[key];
         if (!group) { avgByTime[key] = null; return; }
         const n = group.length;
         const avg = (field) => group.reduce((s, a) => s + field(a), 0) / n;
@@ -443,12 +449,33 @@ function buildAverages() {
     });
 }
 
+// Sample 24h: Wed Jan 29 (full day with 96 data points)
+// Sample 3d: Jan 28–30
 function buildRecent(hours) {
-    const cutoff = Date.now() - hours * 60 * 60 * 1000;
-    recentAnalyses = analyses.filter(a => new Date(a.timestamp).getTime() >= cutoff);
-    recentLabels = recentAnalyses.map(a => {
+    if (hours <= 24) {
+        const sampleStart = new Date('2026-01-29T00:00:00');
+        const sampleEnd = new Date('2026-01-30T00:00:00');
+        recentAnalyses = analyses.filter(a => {
+            const t = new Date(a.timestamp).getTime();
+            return t >= sampleStart.getTime() && t < sampleEnd.getTime();
+        });
+        // Duplicate first point as trailing midnight so line extends to right edge
+        if (recentAnalyses.length > 0) {
+            recentAnalyses.push(recentAnalyses[0]);
+        }
+    } else {
+        // Sample 3 days: Jan 28–30
+        const sampleStart = new Date('2026-01-28T00:00:00');
+        const sampleEnd = new Date('2026-01-31T00:00:00');
+        recentAnalyses = analyses.filter(a => {
+            const t = new Date(a.timestamp).getTime();
+            return t >= sampleStart.getTime() && t < sampleEnd.getTime();
+        });
+    }
+    recentLabels = recentAnalyses.map((a, i, arr) => {
         const d = new Date(a.timestamp);
         if (hours <= 24) {
+            if (i === arr.length - 1) return '12AM'; // trailing midnight
             const h = d.getHours();
             const ampm = h >= 12 ? 'PM' : 'AM';
             const h12 = h % 12 || 12;
@@ -502,6 +529,52 @@ function getData(avgField, rawField) {
 
 function getXScaleOptions() {
     if (viewMode === 'averages') return chartDefaults.scales.x;
+    if (viewMode === '24h') {
+        const allowed = ['12AM', '3AM', '6AM', '9AM', '12PM', '3PM', '6PM', '9PM'];
+        const shown = {};
+        return {
+            ...chartDefaults.scales.x,
+            ticks: {
+                ...chartDefaults.scales.x.ticks,
+                callback: function(val, index, ticks) {
+                    const label = this.getLabelForValue(val);
+                    const isLast = index === ticks.length - 1;
+                    if (allowed.includes(label) && (!shown[label] || isLast)) {
+                        shown[label] = true;
+                        return label;
+                    }
+                    return null;
+                }
+            },
+        };
+    }
+    if (viewMode === '7d') {
+        // Space day labels evenly across the x-axis
+        const uniqueDays = [];
+        const seen = {};
+        recentLabels.forEach(label => {
+            if (!seen[label]) { seen[label] = true; uniqueDays.push(label); }
+        });
+        const total = recentLabels.length;
+        const n = uniqueDays.length;
+        const midpoints = {};
+        uniqueDays.forEach((label, i) => {
+            const pos = Math.round((i + 0.5) * total / n);
+            midpoints[pos] = label;
+        });
+        return {
+            ...chartDefaults.scales.x,
+            ticks: {
+                ...chartDefaults.scales.x.ticks,
+                autoSkip: false,
+                maxRotation: 0,
+                callback: function(val, index) {
+                    return midpoints[index] || '';
+                }
+            },
+        };
+    }
+    const allowed24h = ['12AM', '3AM', '6AM', '9AM', '12PM', '3PM', '6PM', '9PM'];
     let lastLabel = '';
     return {
         ...chartDefaults.scales.x,
@@ -513,7 +586,7 @@ function getXScaleOptions() {
                 const label = this.getLabelForValue(val);
                 if (label === lastLabel) return '';
                 lastLabel = label;
-                return label;
+                return allowed24h.includes(label) ? label : '';
             }
         },
     };
@@ -521,6 +594,7 @@ function getXScaleOptions() {
 
 function formatTimeLabel(hhmm) {
     const [h, m] = hhmm.split(':').map(Number);
+    if (h === 24) return '12AM';
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h % 12 || 12;
     return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
@@ -594,6 +668,7 @@ function makeDataset(label, color, data) {
         borderColor: color,
         backgroundColor: 'transparent',
         borderWidth: 3,
+        borderCapStyle: 'round',
         pointRadius: 0,
         pointHoverRadius: 4,
         pointBackgroundColor: color,
@@ -668,7 +743,6 @@ function renderActivityCharts() {
     singleLineChart('pedestriansChart', a => a.pedestrians, a => a.activity.pedestrians);
     singleLineChart('taxisChart', a => a.taxis, a => a.activity.taxis);
     singleLineChart('deliveryChart', a => a.delivery_vehicles, a => a.activity.delivery_vehicles);
-    singleLineChart('bikesChart', a => a.bikes_scooters, a => a.activity.bikes_scooters);
 }
 
 function renderVibeChart() {
@@ -727,6 +801,7 @@ function renderWeatherChart() {
         },
         options: {
             ...chartDefaults,
+            plugins: { ...chartDefaults.plugins, legend: { display: false } },
             scales: {
                 ...chartDefaults.scales,
                 x: getXScaleOptions(),
